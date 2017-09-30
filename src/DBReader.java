@@ -4,10 +4,13 @@ import java.awt.GridLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.Properties;
 
 import javax.swing.JButton;
@@ -15,8 +18,6 @@ import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
-
-import com.mysql.jdbc.PreparedStatement;
 
 @SuppressWarnings("serial")
 public class DBReader extends Frame implements ActionListener{
@@ -50,21 +51,26 @@ public class DBReader extends Frame implements ActionListener{
 	private JTextField wfText=new JTextField(20);
 	private JTextField manText=new JTextField(20);
 	private JTextField supText=new JTextField(20);
-	private JPanel p=new JPanel(new GridLayout(12,2));
+	private JTextField errorText=new JTextField(20);
+	private JPanel p=new JPanel(new GridLayout(13,2));
 	private JButton nxt = new JButton("NEXT");
 	private JButton prev = new JButton("PREVIOUS");
 	private JButton add = new JButton("ADD");
+	private JButton update= new JButton("UPDATE");
 	private JButton del = new JButton("DELETE");
 	private JButton clear = new JButton("CLEAR");
 
 	public DBReader(){
 		//Set GUI dimensions
 		f.setPreferredSize(new Dimension(800, 400));
+		//disable text entry in error text field
+		errorText.setEditable(false);
 
 		// Setup buttons to detect input
 		nxt.addActionListener(this);
 		prev.addActionListener(this);
 		add.addActionListener(this);
+		update.addActionListener(this);
 		del.addActionListener(this);
 		clear.addActionListener(this);
 
@@ -79,8 +85,9 @@ public class DBReader extends Frame implements ActionListener{
 		p.add(manLabel); p.add(manText);
 		p.add(supLabel); p.add(supText);
 		p.add(nxt); p.add(prev);
-		p.add(add); p.add(del);
-		p.add(clear);
+		p.add(add); p.add(update);
+		p.add(del); p.add(clear);
+		p.add(errorText);
 		f.add(p);
 		f.setVisible(true);
 		f.pack();
@@ -120,22 +127,35 @@ public class DBReader extends Frame implements ActionListener{
 	@Override
 	public void actionPerformed(ActionEvent e){
 		try {
-			if (e.getSource() == nxt)
-				if (rs.next())
+			s.executeQuery("SELECT * FROM " + "employee");
+			rs = s.getResultSet();
+
+			switch(e.getActionCommand()) {
+			case "NEXT": 
+				if (rs.next()) {
+					errorText.setText("");
 					getEntry();
-			if (e.getSource() == prev)
-				if (rs.previous())
+				} else errorText.setText("NO  NEXT ENTRY");
+				break;
+			case "PREVIOUS": 
+				if (rs.previous()){
+					errorText.setText("");
 					getEntry();
-				else {
+				} else {
 					clearEntries();
-					rs.beforeFirst();
+					errorText.setText("NO PREVIOUS ENTRY");
 				}
-			//if (e.getSource() == add)
-				//addEntry();
-			if (e.getSource() == del)
+				break;
+			case "ADD": 
+				addEntry();
+				break;
+			case "DELETE":
 				deleteEntry();
-			if (e.getSource() == clear)
+				break;
+			case "CLEAR":
 				clearEntries();
+				break;
+			}
 		} catch (SQLException exc) {
 			exc.printStackTrace();
 		}	
@@ -156,13 +176,61 @@ public class DBReader extends Frame implements ActionListener{
 	}
 
 	private void addEntry() throws SQLException {
-		if (s.executeQuery(("SELECT * FROM Employee WHERE Ssn = " + Integer.parseInt(ssnText.getText()))) != null) 
-			s.executeUpdate(
-					"INSERT INTO Employee (Ssn, Bdate, Name,Address, Salary, Sex, Works_for, Manages, Supervises)"
-							+ "VALUES"
-							+ "('Integer.parseInt(ssnText.getText())', 'bdateText.getText()', 'nameText.getText()', "
-							+ "'addrText.getText()', 'salaryText.getText()', 'genderText.getText()')"
-					);
+		int ssn = 0;
+		if (checkNumber(ssnText.getText(), true))
+			ssn = Integer.parseInt(ssnText.getText());
+		else 
+			return;
+
+		String bdate = bdateText.getText();
+		Date date1 = new Date(System.currentTimeMillis());
+		if (!bdate.equals(""))
+			try {
+				date1 = (Date) new SimpleDateFormat("yyyy/mm/dd").parse(bdate);
+			} catch (ParseException e) {
+				e.printStackTrace();
+			}
+
+		String name = nameText.getText();
+		String addr = addrText.getText();
+
+		float salary = 0.0f;
+		if (checkNumber(ssnText.getText(), false))
+			salary = Float.parseFloat(salaryText.getText());
+
+		String gen= genderText.getText();
+		String wf = wfText.getText(); 
+		if (wf.equals("")) wf = "0";
+		String man = manText.getText();
+		if (man.equals("")) man = "0";
+		String sup = supText.getText();
+		if (sup.equals("")) sup = "0";
+
+		ResultSet res = s.executeQuery("SELECT * FROM Employee WHERE Ssn = " + "ssn");
+		if (!res.next()) {
+			s.executeUpdate( 
+					"INSERT INTO Employee (Ssn, Bdate, Name, Address, Salary, Sex, Works_For, Manages, Supervises)" 
+							+"VALUES ('" +ssn+ "','" +date1+ "','"+name+ "', '"
+							+addr+ "','" +salary+ "','" +gen+ "','" 
+							+wf+ "','" +man+ "','" +sup+ "')");
+		} else
+			errorText.setText("ERROR4: DUPLICATE SSN, ENTRY NOT ADDED");
+
+		s.executeQuery("SELECT * FROM " + "employee");
+		rs = s.getResultSet();
+	}
+
+	// Check if a number in a string is valid
+	private boolean checkNumber(String num, boolean isInt) {
+		if(num.equals("") || (!num.matches("[0-9]+")) || (!num.matches("[0-9]+\\.?"))) {
+			errorText.setText("ERROR1: INVALID NUMBER, ENTRY NOT ADDED");
+			return false;
+		} else if (num.matches("[0-9]+") && isInt)
+			return true;
+		else if (num.matches("[0-9]+\\.?") && !isInt)
+			return true;
+		else
+			return false;
 	}
 
 	//Function to delete an entry
@@ -171,6 +239,9 @@ public class DBReader extends Frame implements ActionListener{
 			s.executeUpdate("DELETE FROM Employee WHERE Ssn = " + Integer.parseInt(ssnText.getText()) );
 			clearEntries();
 		}
+		s.executeQuery("SELECT * FROM " + "employee");
+		if(s.getResultSet() == null)
+			errorText.setText("TABLE IS EMPTY, RESULT SET CLOSED");
 	}
 
 	// Function to clear the gui text fields
@@ -184,7 +255,9 @@ public class DBReader extends Frame implements ActionListener{
 		wfText.setText("");
 		manText.setText("");
 		supText.setText("");
-		rs.beforeFirst();
+		errorText.setText("");
+		if (!rs.isClosed())
+			rs.beforeFirst();
 	}
 
 	public static void main(String args[]) {
