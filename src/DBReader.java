@@ -9,8 +9,11 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Locale;
 import java.util.Properties;
 
 import javax.swing.JButton;
@@ -93,19 +96,13 @@ public class DBReader extends Frame implements ActionListener{
 		f.pack();
 	}
 
-	// Establish a connection with database
-	private Connection getConnection() throws SQLException {
-		Properties connectionProps = new Properties();
-		connectionProps.put("user", this.userName);
-		connectionProps.put("password", this.password);
-
-		conn = DriverManager.getConnection(
-				"jdbc:mysql://" 
-						+ this.serverName + ":" 
-						+ this.portNumber + "/" 
-						+ this.dbName, connectionProps);
-
-		return conn;
+	public static void main(String args[]) {
+		DBReader app = new DBReader();
+		try {
+			app.run();
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
 	}
 
 	// Connect to database
@@ -124,6 +121,22 @@ public class DBReader extends Frame implements ActionListener{
 		rs = s.getResultSet();
 	}
 
+	// Establish a connection with database
+	private Connection getConnection() throws SQLException {
+		Properties connectionProps = new Properties();
+		connectionProps.put("user", this.userName);
+		connectionProps.put("password", this.password);
+
+		conn = DriverManager.getConnection(
+				"jdbc:mysql://" 
+						+ this.serverName + ":" 
+						+ this.portNumber + "/" 
+						+ this.dbName, connectionProps);
+
+		return conn;
+	}
+	
+	// Handle all input from button pushes
 	@Override
 	public void actionPerformed(ActionEvent e){
 		try {
@@ -156,7 +169,7 @@ public class DBReader extends Frame implements ActionListener{
 				clearEntries();
 				break;
 			}
-		} catch (SQLException exc) {
+		} catch (SQLException | ParseException exc) {
 			exc.printStackTrace();
 		}	
 	}
@@ -174,28 +187,22 @@ public class DBReader extends Frame implements ActionListener{
 		manText.setText(Integer.toString(rs.getInt("manages")));
 		supText.setText(Integer.toString(rs.getInt("supervises")));
 	}
-
-	private void addEntry() throws SQLException {
+	
+	// Function to prepare data for employee table 
+	private void addEntry() throws SQLException, ParseException {
 		int ssn = 0;
 		if (checkNumber(ssnText.getText(), true))
 			ssn = Integer.parseInt(ssnText.getText());
 		else 
 			return;
-
-		String bdate = bdateText.getText();
-		Date date1 = new Date(System.currentTimeMillis());
-		if (!bdate.equals(""))
-			try {
-				date1 = (Date) new SimpleDateFormat("yyyy/mm/dd").parse(bdate);
-			} catch (ParseException e) {
-				e.printStackTrace();
-			}
-
+		
+		Date date1 = getDate(bdateText.getText(), "yyy-MM-dd");
+		
 		String name = nameText.getText();
 		String addr = addrText.getText();
 
 		float salary = 0.0f;
-		if (checkNumber(ssnText.getText(), false))
+		if (checkNumber(ssnText.getText(), false) && !salaryText.getText().equals(""))
 			salary = Float.parseFloat(salaryText.getText());
 
 		String gen= genderText.getText();
@@ -206,21 +213,33 @@ public class DBReader extends Frame implements ActionListener{
 		String sup = supText.getText();
 		if (sup.equals("")) sup = "0";
 
-		ResultSet res = s.executeQuery("SELECT * FROM Employee WHERE Ssn = " + "ssn");
-		if (!res.next()) {
+		if (tryUpdate(ssn, date1, name, addr, salary, gen, wf, man, sup)) {
+			s.executeQuery("SELECT * FROM " + "employee");
+			rs = s.getResultSet();
+		} else errorText.setText("ERROR7: NOT ADDED");
+	}
+
+	//Function to attempt an update to the employee table 
+	private boolean tryUpdate(int ssn, Date date1, String name, String addr,
+			float salary, String gen, String wf, String man, String sup) throws SQLException {
+		ResultSet res = s.executeQuery("SELECT * FROM Employee WHERE Ssn = " + ssn);
+		if (!res.isBeforeFirst() ) {
 			s.executeUpdate( 
 					"INSERT INTO Employee (Ssn, Bdate, Name, Address, Salary, Sex, Works_For, Manages, Supervises)" 
 							+"VALUES ('" +ssn+ "','" +date1+ "','"+name+ "', '"
 							+addr+ "','" +salary+ "','" +gen+ "','" 
 							+wf+ "','" +man+ "','" +sup+ "')");
+			clearEntries();
+			errorText.setText("ENTRY ADDED");
+			res.close();
+			return true;
 		} else
 			errorText.setText("ERROR4: DUPLICATE SSN, ENTRY NOT ADDED");
-
-		s.executeQuery("SELECT * FROM " + "employee");
-		rs = s.getResultSet();
+		res.close();
+		return false;
 	}
 
-	// Check if a number in a string is valid
+	// Function to Check if a number in a string is valid
 	private boolean checkNumber(String num, boolean isInt) {
 		if(num.equals("") || (!num.matches("[0-9]+")) || (!num.matches("[0-9]+\\.?"))) {
 			errorText.setText("ERROR1: INVALID NUMBER, ENTRY NOT ADDED");
@@ -232,6 +251,21 @@ public class DBReader extends Frame implements ActionListener{
 		else
 			return false;
 	}
+	
+	// Function to check if the date matches the correct format
+	private java.sql.Date getDate(String date, String format){
+		if (date.equals("")) return new java.sql.Date(Calendar.getInstance().getTime().getTime());
+		
+		Date d2;
+		SimpleDateFormat df = new SimpleDateFormat(format, Locale.ENGLISH);
+		try {
+			d2 = new java.sql.Date(df.parse(date).getTime()); 
+		} catch (ParseException e) {
+		    e.printStackTrace();
+		    return new java.sql.Date(Calendar.getInstance().getTime().getTime());
+		}
+		return d2;
+	}
 
 	//Function to delete an entry
 	private void deleteEntry() throws SQLException {
@@ -239,6 +273,7 @@ public class DBReader extends Frame implements ActionListener{
 			s.executeUpdate("DELETE FROM Employee WHERE Ssn = " + Integer.parseInt(ssnText.getText()) );
 			clearEntries();
 		}
+		// Query database again to check if data remains
 		s.executeQuery("SELECT * FROM " + "employee");
 		if(s.getResultSet() == null)
 			errorText.setText("TABLE IS EMPTY, RESULT SET CLOSED");
@@ -258,14 +293,5 @@ public class DBReader extends Frame implements ActionListener{
 		errorText.setText("");
 		if (!rs.isClosed())
 			rs.beforeFirst();
-	}
-
-	public static void main(String args[]) {
-		DBReader app = new DBReader();
-		try {
-			app.run();
-		} catch (SQLException e) {
-			e.printStackTrace();
-		}
 	}
 }
