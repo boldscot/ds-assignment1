@@ -135,14 +135,15 @@ public class DBReader extends Frame implements ActionListener{
 
 		return conn;
 	}
-	
+
 	// Handle all input from button pushes
 	@Override
 	public void actionPerformed(ActionEvent e){
 		try {
-			s.executeQuery("SELECT * FROM " + "employee");
-			rs = s.getResultSet();
-
+			if (rs.isClosed()) {
+				s.executeQuery("SELECT * FROM " + "employee");
+				rs = s.getResultSet();
+			}
 			switch(e.getActionCommand()) {
 			case "NEXT": 
 				if (rs.next()) {
@@ -161,6 +162,9 @@ public class DBReader extends Frame implements ActionListener{
 				break;
 			case "ADD": 
 				addEntry();
+				break;
+			case "UPDATE": 
+				updateEntry();
 				break;
 			case "DELETE":
 				deleteEntry();
@@ -187,25 +191,36 @@ public class DBReader extends Frame implements ActionListener{
 		manText.setText(Integer.toString(rs.getInt("manages")));
 		supText.setText(Integer.toString(rs.getInt("supervises")));
 	}
-	
+
 	// Function to prepare data for employee table 
 	private void addEntry() throws SQLException, ParseException {
 		int ssn = 0;
-		if (checkNumber(ssnText.getText(), true))
+		if (checkNumber(ssnText.getText(), true) && !ssnText.getText().equals("")) 
 			ssn = Integer.parseInt(ssnText.getText());
-		else 
+		else {
+			errorText.setText("INVALID SSN");
 			return;
-		
+		}
+
 		Date date1 = getDate(bdateText.getText(), "yyy-MM-dd");
-		
 		String name = nameText.getText();
 		String addr = addrText.getText();
+		if (name.equals("") || addr.equals("")) {
+			errorText.setText("INVALID STRING");
+			return;
+		} 
 
 		float salary = 0.0f;
 		if (checkNumber(ssnText.getText(), false) && !salaryText.getText().equals(""))
 			salary = Float.parseFloat(salaryText.getText());
 
 		String gen= genderText.getText();
+		if (gen.equals("") || !gen.matches("[MmFf]")) {
+			errorText.setText("INVALID GENDER");
+			return;
+		}
+		
+		// TODO: Validate numbers 
 		String wf = wfText.getText(); 
 		if (wf.equals("")) wf = "0";
 		String man = manText.getText();
@@ -213,14 +228,15 @@ public class DBReader extends Frame implements ActionListener{
 		String sup = supText.getText();
 		if (sup.equals("")) sup = "0";
 
-		if (tryUpdate(ssn, date1, name, addr, salary, gen, wf, man, sup)) {
+		if (insertEntry(ssn, date1, name, addr, salary, gen, wf, man, sup)) {
 			s.executeQuery("SELECT * FROM " + "employee");
 			rs = s.getResultSet();
 		} else errorText.setText("ERROR7: NOT ADDED");
+
 	}
 
 	//Function to attempt an update to the employee table 
-	private boolean tryUpdate(int ssn, Date date1, String name, String addr,
+	private boolean insertEntry(int ssn, Date date1, String name, String addr,
 			float salary, String gen, String wf, String man, String sup) throws SQLException {
 		ResultSet res = s.executeQuery("SELECT * FROM Employee WHERE Ssn = " + ssn);
 		if (!res.isBeforeFirst() ) {
@@ -239,6 +255,24 @@ public class DBReader extends Frame implements ActionListener{
 		return false;
 	}
 
+	//Function to update an entry in table
+	private boolean updateEntry() throws SQLException, ParseException {
+		int currentSsn = 0;
+		if (checkNumber(ssnText.getText(), true) && !ssnText.getText().equals("")) 
+			currentSsn = Integer.parseInt(ssnText.getText());
+		ResultSet res = s.executeQuery("SELECT * FROM Employee WHERE Ssn = " + currentSsn);
+		if (res.isBeforeFirst() ) {
+			s.executeUpdate("DELETE FROM Employee WHERE Ssn = " + currentSsn);
+			addEntry();
+			res.close();
+			return true;
+		} else {
+			errorText.setText("NO USER EXIST WITH THIS SSN");
+			res.close();
+			return false;
+		}
+	}
+
 	// Function to Check if a number in a string is valid
 	private boolean checkNumber(String num, boolean isInt) {
 		if(num.equals("") || (!num.matches("[0-9]+")) || (!num.matches("[0-9]+\\.?"))) {
@@ -251,18 +285,18 @@ public class DBReader extends Frame implements ActionListener{
 		else
 			return false;
 	}
-	
+
 	// Function to check if the date matches the correct format
 	private java.sql.Date getDate(String date, String format){
 		if (date.equals("")) return new java.sql.Date(Calendar.getInstance().getTime().getTime());
-		
+
 		Date d2;
 		SimpleDateFormat df = new SimpleDateFormat(format, Locale.ENGLISH);
 		try {
 			d2 = new java.sql.Date(df.parse(date).getTime()); 
 		} catch (ParseException e) {
-		    e.printStackTrace();
-		    return new java.sql.Date(Calendar.getInstance().getTime().getTime());
+			e.printStackTrace();
+			return new java.sql.Date(Calendar.getInstance().getTime().getTime());
 		}
 		return d2;
 	}
